@@ -9,6 +9,10 @@ import visa
 # Programming guide for this oscilloscope:
 # https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-af444326-0551-4fd5-a277-bf8fff6f53cb/1/-/-/-/-/DS1000Z-E_ProgrammingGuide_EN.pdf
 
+# TODO: check against an actually running scope that the various ranges
+# here are correctly interpreted. These are based on best guesses
+# from the manual but there are definitely contradictory things online.
+
 # Use 12000 for single channel
 # and switch to 6000 if you have two channels enabled.
 mdepth = 12000
@@ -31,6 +35,11 @@ def get_data(scope) :
         # After retrieving data, you will get a crash if you
         # attempt to check :WAV:STOP. It is fine before, but
         # broken after. You can still set it but you can't read it.
+    # Need to convert to real values.
+    # Taking advice from here, which lists our model as one of the weird ones:
+    # https://rigolwfm.readthedocs.io/en/latest/1-DS1000Z-Waveforms.html
+    # But major TODO is validate in the lab and see if this matches real scopes.
+
     return fulldata
 
 # Make the pyvisa resource manager
@@ -45,39 +54,60 @@ print("Will open instrument",usb[0])
 
 scope = rm.open_resource(usb[0], timeout=2000, chunk_size=1024000) # bigger timeout for long mem
 
-# Reset the scope, if you want.
-#scope.write('*rst') # reset
-
-# Check initial 
+# Check initial trigger and aquisition status
 print("Aquire type:",scope.query("ACQuire:TYPE?"))
-print("Trigger status:",scope.query("trig:status?"))
-# Your options are 
-scope.write(":TRIG:SWEEP AUTO") 
 print("Trigger status:",scope.query("trig:status?"))
 
 # Run
 scope.write(":RUN")
 
 # Set mem depth.
-# 
+# It seems like this can only be changed while running, so
+# don't move it out of here.
 scope.write(":ACQ:MDEP {0}".format(mdepth))
 print("Mem depth:",scope.query("ACQ:MDEP?"))
 
+# Let's check the mode of your axes. 
+# You probably want MAIN here.
+print("Time axis mode:",scope.query(":TIMebase:MODE?"))
+
+# Set your trigger and let's turn it on.
+# Your options are AUTO, NORM, and SING
+# You probably want NORM for physics
+# AUTO just makes sure something is happening so you can test this
+scope.write(":TRIG:SWEEP AUTO") 
+print("Trigger sweep:",scope.query(":TRIG:SWEEP?"))
+# Mode is where/what we trigger on.
+# Lots of options, see programming guide pg 2-125
+scope.write(":TRIG:MODE EDGE") 
+# For an edge trigger, we can set additional properties:
+scope.write(":TRIG:EDG:SOUR CHAN1") # trigger on channel 1
+scope.write(":TRIG:EDG:SLOP POS") # trigge on the rising edge
+# Sets trigger level. For this you need to know your vertical scale!!
+# Read the manual and try a few options.
+scope.write(":TRIG:EDG:LEV 0.5")
+print("Trigger mode:",scope.query(":TRIG:MODE?"))
+print("Trigger status:",scope.query("trig:status?"))
 
 # Grab the raw data from channel 1
 scope.write(":STOP")
 
-print("Mem depth:",scope.query("ACQ:MDEP?"))
-
-# Get the timescale
+# Get the timescale.
+# This is in seconds per division.
 timescale = float(scope.query(":TIM:SCAL?"))
 
 # Get the timescale offset
 timeoffset = float(scope.query(":TIM:OFFS?")[0])
-voltscale = float(scope.query(':CHAN1:SCAL?')[0])
 
+# Get the y axis range (volts) of channel 1
+# Scale is # of volts per division, and there are 8 divisions on the screen.
+voltscale = float(scope.query(':CHAN1:SCAL?')[0])
 # And the voltage offset
 voltoffset = float(scope.query(":CHAN1:OFFS?")[0])
+
+# Check the sample rate
+sample_rate = scope.query(':ACQ:SRAT?')
+print("Sample rate:", sample_rate)
 
 # Note: not :WAV:POIN:MODE, which is for other DS1000-series
 # Rigol scopes, but causes errors here
@@ -85,7 +115,7 @@ scope.write(":WAV:SOUR CHAN1")
 scope.write(":WAV:FORM BYTE") # Had ascii and raw
 scope.write(":WAV:MODE RAW") # NORM instead of RAW, which takes the whole buffer?
 
-# Make sure things are what we set them to be
+# Make sure things are what we want them to be.
 print("Check some values.")
 print("timescale:",timescale)
 print("timeoffset:",timeoffset)
@@ -93,9 +123,6 @@ print("voltscale:",voltscale)
 print("voltoffset",voltoffset)
 print("Wave form:",scope.query(":WAV:FORM?"))
 print("Mode:",scope.query("WAV:MODE?"))
-
-# If you want, use this to check if there is an error on the scope
-#print("Error check:",scope.query(":SYSTem:ERRor?"))
 
 # Get the trace
 print("About to fetch data...")
@@ -105,3 +132,19 @@ print(np.size(rawdata))
 
 # Now we need to do some parsing to understand it, using the 
 # scale info we collected before.
+
+# We know the time increment between all our measurements and the offset of the first value,
+# so we can make a time axis for our data.
+time_axis = np.array([timeoffset + i*timescale for i in range(mdepth+1)])
+
+# The y axis range is ...
+# Let's do this for them as it looks pretty messy
+
+#############################
+# More useful commands
+
+# Reset the scope
+#scope.write('*rst') # reset
+
+# Check if there is an error on the scope
+#print("Error check:",scope.query(":SYSTem:ERRor?"))
