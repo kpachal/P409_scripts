@@ -6,18 +6,18 @@ import visa
 # https://gist.github.com/prhuft/8d961e2983bfdf8fdf1effcc1aae61a9
 # https://gist.github.com/pklaus/7e4cbac1009b668eafab
 
-# NOTE: 
-# After retrieving data, you will get a crash if you
-# attempt to check :WAV:STOP. It is fine before, but
-# broken after. You can still set it just not read it.
+# Programming guide for this oscilloscope:
+# https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-af444326-0551-4fd5-a277-bf8fff6f53cb/1/-/-/-/-/DS1000Z-E_ProgrammingGuide_EN.pdf
+
+# Use 12000 for single channel
+# and switch to 6000 if you have two channels enabled.
+mdepth = 12000
 
 # Since we can only collect a bit at a time,
 def get_data(scope) :
     fulldata = []
-    points_list = list(range(489, 12000, 489))
-    points_list.append(12000)
-    print("Total intervals:",len(points_list))
-    print("They are:",points_list)
+    points_list = list(range(489, mdepth, 489))
+    points_list.append(mdepth)
     for thisindex, endpoint in enumerate(points_list) :
         if thisindex != 0 :
             startpoint = points_list[thisindex-1]+1
@@ -26,10 +26,14 @@ def get_data(scope) :
         scope.write(":WAV:STAR {0}".format(startpoint))
         scope.write(":WAV:STOP {0}".format(endpoint)) # 489 is the maximum distance between start and end
         rawdata = scope.query_binary_values(':WAV:DATA?', datatype = 'b', container = np.array)
-        print("Start, end, distance, length:",startpoint,endpoint,endpoint-startpoint,len(rawdata))
         fulldata = np.append(fulldata,rawdata)
+        # NOTE: 
+        # After retrieving data, you will get a crash if you
+        # attempt to check :WAV:STOP. It is fine before, but
+        # broken after. You can still set it but you can't read it.
     return fulldata
 
+# Make the pyvisa resource manager
 rm = visa.ResourceManager()
 # Get the USB device, e.g. 'USB0::0x1AB1::0x0588::DS1ED141904883'
 instruments = rm.list_resources()
@@ -41,18 +45,29 @@ print("Will open instrument",usb[0])
 
 scope = rm.open_resource(usb[0], timeout=2000, chunk_size=1024000) # bigger timeout for long mem
 
-# Reset the scope, just in case.
+# Reset the scope, if you want.
 #scope.write('*rst') # reset
 
-# Run a bit
+# Check initial 
+print("Aquire type:",scope.query("ACQuire:TYPE?"))
+print("Trigger status:",scope.query("trig:status?"))
+# Your options are 
+scope.write(":TRIG:SWEEP AUTO") 
+print("Trigger status:",scope.query("trig:status?"))
+
+# Run
 scope.write(":RUN")
 
-# Set mem depth before stopping
-scope.write(":ACQ:MDEP 12000")
+# Set mem depth.
+# 
+scope.write(":ACQ:MDEP {0}".format(mdepth))
 print("Mem depth:",scope.query("ACQ:MDEP?"))
+
 
 # Grab the raw data from channel 1
 scope.write(":STOP")
+
+print("Mem depth:",scope.query("ACQ:MDEP?"))
 
 # Get the timescale
 timescale = float(scope.query(":TIM:SCAL?"))
@@ -70,9 +85,6 @@ scope.write(":WAV:SOUR CHAN1")
 scope.write(":WAV:FORM BYTE") # Had ascii and raw
 scope.write(":WAV:MODE RAW") # NORM instead of RAW, which takes the whole buffer?
 
-# Didn't help
-# scope.write(":ACQ:MEMD LONG")
-
 # Make sure things are what we set them to be
 print("Check some values.")
 print("timescale:",timescale)
@@ -82,36 +94,14 @@ print("voltoffset",voltoffset)
 print("Wave form:",scope.query(":WAV:FORM?"))
 print("Mode:",scope.query("WAV:MODE?"))
 
-# Hope to shorten data collected, did not stop error
-scope.write(":WAV:STAR 1")
-scope.write(":WAV:STOP 489") # 489 is the maximum value this can be.
-
-# Are there any error up to this point?
-# it seems like there are, but I can't tell why -
-# e.g. "Query INTERRUPTED" error pops up even if i didn't
-# query anything
+# If you want, use this to check if there is an error on the scope
 #print("Error check:",scope.query(":SYSTem:ERRor?"))
 
-# Error party
+# Get the trace
 print("About to fetch data...")
 rawdata = get_data(scope)
-#rawdata = scope.query(":WAV:DATA? CHAN1").encode('ascii')[10:]
-#rawdata = scope.query_binary_values(':WAV:DATA?', datatype = 'b', container = np.array)
 print(rawdata)
 print(np.size(rawdata))
-# These are attempts to check just a little at a time,
-# following pyvisa tips, but also fail
-# https://pyvisa.readthedocs.io/en/latest/introduction/rvalues.html
-#scope.write(':WAV:DATA? CHAN1')
-#data = scope.read_bytes(1)
-#data = scope.read_raw()
 
-#rawdata = scope.query(":WAV:DATA? CHAN1").encode('ascii')[10:]
-#data_size = len(rawdata)
-#sample_rate = scope.query(':ACQ:SAMP?')[0]
-#print('Data size:', data_size, "Sample rate:", sample_rate)
-
-# Threads that discuss the error message shown:
-# https://github.com/pyvisa/pyvisa-py/issues/20
-# https://github.com/pyvisa/pyvisa/issues/458
-# https://github.com/pyvisa/pyvisa/issues/449
+# Now we need to do some parsing to understand it, using the 
+# scale info we collected before.

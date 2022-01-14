@@ -2,7 +2,7 @@ import pyvisa
 import numpy as np
 
 # For debug
-pyvisa.log_to_screen()
+#pyvisa.log_to_screen()
 
 rm = pyvisa.ResourceManager()
 print("Resources connected to this RP:")
