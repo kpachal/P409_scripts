@@ -148,3 +148,7 @@ time_axis = np.array([timeoffset + i*timescale for i in range(mdepth+1)])
 
 # Check if there is an error on the scope
 #print("Error check:",scope.query(":SYSTem:ERRor?"))
+
+# Release scope for next call
+rm.close()
+scope.close()
