@@ -15,11 +15,19 @@ channel = "CHAN1"
 # Programming guide for this oscilloscope:
 # https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-af444326-0551-4fd5-a277-bf8fff6f53cb/1/-/-/-/-/DS1000Z-E_ProgrammingGuide_EN.pdf
 
-# TODO: check against an actually running scope that the various ranges
-# here are correctly interpreted. These are based on best guesses
-# from the manual but there are definitely contradictory things online.
+# Troubleshooting:
+# If you are getting "Data collection failed" errors for all points,
+# you may not have a trace on the scope screen at all - i.e. nothing has
+# triggered. You can try extending the time that you wait for a trigger, or adjust
+# your trigger threshold, or move to trigger mode "AUTO". In AUTO there will always
+# be *something* on the screen, it just might not be something useful. 
+# Check what the traces look like now and then to make sure they seem sensible.
+# If you are just missing pieces of the data or the error seems to be transient,
+# try changing the parameter "mdepth" in the script below. This is pretty finicky
+# and has to do with the format of the data read out from the scope.
 
-# Since we can only collect a bit at a time,
+# Since we can only collect a bit of data at a time on these scopes,
+# walk through the size of the trace samples and accumulate them here.
 def get_data(scope,mdepth) :
     print("About to fetch data...")
     fulldata = []
@@ -32,8 +40,6 @@ def get_data(scope,mdepth) :
             startpoint = 1
         scope.write(":WAV:STAR {0}".format(startpoint))
         scope.write(":WAV:STOP {0}".format(endpoint)) # 489 is the maximum distance between start and end
-        # Switched to "I" and new scaling following Mark's lead
-        #print("getting start and stop",startpoint,endpoint,"...")
         try :
           rawdata = scope.query_binary_values(':WAV:DATA?', datatype = 'I', container = np.array)
         except :
@@ -81,12 +87,13 @@ scope.write(":RUN")
 # Set mem depth.
 # Use 12000 for single channel
 # and switch to 6000 if you have two channels enabled.
-# If you're getting weird errors, go to AUTO:
-# it will be slower to run but that's life.
+# If you're failing to get data, you can try switching to AUTO
+# (the commented out line at the bottom):
+# it will be slower to run, but that's life.
 #mdepth = 12000
-#mdepth = 6000
-#scope.write(":ACQ:MDEP {0}".format(mdepth))
-scope.write(":ACQ:MDEP AUTO")
+mdepth = 6000
+scope.write(":ACQ:MDEP {0}".format(mdepth))
+#scope.write(":ACQ:MDEP AUTO")
 used_mdepth = scope.query("ACQ:MDEP?")
 print("Mem depth:",used_mdepth)
 
@@ -138,8 +145,6 @@ voltoffset = float(scope.query(":{0}:OFFS?".format(channel)))
 sample_rate = scope.query(':ACQ:SRAT?')
 print("Sample rate:", sample_rate)
 
-
-
 # Note: not :WAV:POIN:MODE, which is for other DS1000-series Rigol scopes
 # Byte return format is a value between 0 and 255
 scope.write(":WAV:SOUR {0}".format(channel))
@@ -156,7 +161,7 @@ print("Wave form:",scope.query(":WAV:FORM?"))
 print("Mode:",scope.query("WAV:MODE?"))
 
 # Get the trace
-mdepth = int(float(sample_rate)*timescale*12.)
+mdepth = int(float(sample_rate)*timescale*12.) # This is the true mdepth, regardless of what we set
 print("Using mdepth",mdepth)
 tracedata = get_data(scope,mdepth)
 print(tracedata)
@@ -167,9 +172,7 @@ print(np.size(tracedata))
 
 # We know the time increment between all our measurements and the offset of the first value,
 # so we can make a time axis for our data.
-# TODO: verify if there really are 12 divisions and the offset is the middle. 
 time_axis = np.linspace(timeoffset - 6 * timescale, timeoffset + 6 * timescale, num=len(tracedata))
-# Can validate if we want now
 
 # Quick plot of data
 plt.plot(time_axis,tracedata)
@@ -185,7 +188,6 @@ scope.write(":RUN")
 time.sleep(3)
 scope.write(":STOP")
 newdata = get_data(scope,mdepth)
-#newscaled = (newdata/2**32-0.5)*voltscale+voltoffset
 # Add it to the plot ...
 plt.plot(time_axis,newdata)
 plt.savefig('two_traces.png')
