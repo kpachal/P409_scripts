@@ -2,6 +2,7 @@ import numpy as np
 import sys
 import pyvisa as visa
 from matplotlib import pyplot as plt
+import time
 
 # Based on examples in e.g.
 # https://gist.github.com/prhuft/8d961e2983bfdf8fdf1effcc1aae61a9
@@ -18,6 +19,7 @@ from matplotlib import pyplot as plt
 # Use 12000 for single channel
 # and switch to 6000 if you have two channels enabled.
 mdepth = 12000
+#mdepth = 6000
 
 # Since we can only collect a bit at a time,
 def get_data(scope) :
@@ -31,7 +33,8 @@ def get_data(scope) :
             startpoint = 1
         scope.write(":WAV:STAR {0}".format(startpoint))
         scope.write(":WAV:STOP {0}".format(endpoint)) # 489 is the maximum distance between start and end
-        rawdata = scope.query_binary_values(':WAV:DATA?', datatype = 'b', container = np.array)
+        # Switched to "I" and new scaling following Mark's lead
+        rawdata = scope.query_binary_values(':WAV:DATA?', datatype = 'I', container = np.array)
         fulldata = np.append(fulldata,rawdata)
         # NOTE: 
         # After retrieving data, you will get a crash if you
@@ -74,8 +77,8 @@ print("Mem depth:",scope.query("ACQ:MDEP?"))
 print("Time axis mode:",scope.query(":TIMebase:MODE?"))
 
 # Let's set the x axis scale.
-# Picking a fairly long one so we can see what's up.
-scope.write(":TIM:SCAL 0.0002")
+# By trial and error, this looks pretty nice.
+scope.write(":TIM:SCAL 0.00002") 
 
 # Set your trigger and let's turn it on.
 # Your options are AUTO, NORM, and SING
@@ -91,10 +94,12 @@ scope.write(":TRIG:EDG:SOUR CHAN1") # trigger on channel 1
 scope.write(":TRIG:EDG:SLOP POS") # trigge on the rising edge
 # Sets trigger level. For this you need to know your vertical scale!!
 # Read the manual and try a few options.
-scope.write(":TRIG:EDG:LEV 0.5")
+scope.write(":TRIG:EDG:LEV 8.")
 print("Trigger mode:",scope.query(":TRIG:MODE?"))
 print("Trigger status:",scope.query("trig:status?"))
 
+# Wait a second to make sure we trigger
+time.sleep(1)
 # Grab the raw data from channel 1
 scope.write(":STOP")
 
@@ -103,13 +108,13 @@ scope.write(":STOP")
 timescale = float(scope.query(":TIM:SCAL?"))
 
 # Get the timescale offset
-timeoffset = float(scope.query(":TIM:OFFS?")[0])
+timeoffset = float(scope.query(":TIM:OFFS?"))
 
 # Get the y axis range (volts) of channel 1
 # Scale is # of volts per division, and there are 8 divisions on the screen.
-voltscale = float(scope.query(':CHAN1:SCAL?')[0])
+voltscale = float(scope.query(':CHAN1:SCAL?'))
 # And the voltage offset
-voltoffset = float(scope.query(":CHAN1:OFFS?")[0])
+voltoffset = float(scope.query(":CHAN1:OFFS?"))
 
 # Check the sample rate
 sample_rate = scope.query(':ACQ:SRAT?')
@@ -142,7 +147,7 @@ print(np.size(rawdata))
 # We know the time increment between all our measurements and the offset of the first value,
 # so we can make a time axis for our data.
 # TODO: verify if there really are 12 divisions and the offset is the middle. 
-time_axis = np.linspace(timeoffset - 6 * timescale, timeoffset + 6 * timescale, num=mdepth)
+time_axis = np.linspace(timeoffset - 6 * timescale, timeoffset + 6 * timescale, num=len(rawdata))
 
 # Quick plot of raw data
 plt.plot(time_axis,rawdata)
@@ -162,7 +167,9 @@ plt.clf()
 
 # Offset is center of screen, which should be at half of 255 (127.)
 # So this *should* be:
-voltage_axis = (rawdata-127)*voltscale/255. - voltoffset
+#voltage_axis = (rawdata-127)*voltscale/255. - voltoffset
+voltage_axis = (rawdata/2**32-0.5)*voltscale+voltoffset
+
 # Does data need inverting? Some people seem to think so. 
 # https://gist.github.com/pklaus/7e4cbac1009b668eafab)
 
