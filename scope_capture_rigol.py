@@ -1,10 +1,12 @@
 import numpy as np
 import sys
-import visa
+import pyvisa as visa
+from matplotlib import pyplot as plt
 
 # Based on examples in e.g.
 # https://gist.github.com/prhuft/8d961e2983bfdf8fdf1effcc1aae61a9
 # https://gist.github.com/pklaus/7e4cbac1009b668eafab
+# https://www.codeproject.com/Articles/869421/Interfacing-Rigol-Oscilloscopes-with-C 
 
 # Programming guide for this oscilloscope:
 # https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-af444326-0551-4fd5-a277-bf8fff6f53cb/1/-/-/-/-/DS1000Z-E_ProgrammingGuide_EN.pdf
@@ -71,6 +73,10 @@ print("Mem depth:",scope.query("ACQ:MDEP?"))
 # You probably want MAIN here.
 print("Time axis mode:",scope.query(":TIMebase:MODE?"))
 
+# Let's set the x axis scale.
+# Picking a fairly long one so we can see what's up.
+scope.write(":TIM:SCAL 0.0002")
+
 # Set your trigger and let's turn it on.
 # Your options are AUTO, NORM, and SING
 # You probably want NORM for physics
@@ -109,10 +115,10 @@ voltoffset = float(scope.query(":CHAN1:OFFS?")[0])
 sample_rate = scope.query(':ACQ:SRAT?')
 print("Sample rate:", sample_rate)
 
-# Note: not :WAV:POIN:MODE, which is for other DS1000-series
-# Rigol scopes, but causes errors here
+# Note: not :WAV:POIN:MODE, which is for other DS1000-series Rigol scopes
+# Byte return format is a value between 0 and 255
 scope.write(":WAV:SOUR CHAN1")
-scope.write(":WAV:FORM BYTE") # Had ascii and raw
+scope.write(":WAV:FORM BYTE") # Other: ascii and raw
 scope.write(":WAV:MODE RAW") # NORM instead of RAW, which takes the whole buffer?
 
 # Make sure things are what we want them to be.
@@ -135,10 +141,38 @@ print(np.size(rawdata))
 
 # We know the time increment between all our measurements and the offset of the first value,
 # so we can make a time axis for our data.
-time_axis = np.array([timeoffset + i*timescale for i in range(mdepth+1)])
+# TODO: verify if there really are 12 divisions and the offset is the middle. 
+time_axis = np.linspace(timeoffset - 6 * timescale, timeoffset + 6 * timescale, num=mdepth)
 
-# The y axis range is ...
-# Let's do this for them as it looks pretty messy
+# Quick plot of raw data
+plt.plot(time_axis,rawdata)
+plt.xlabel('Time [s]')
+plt.ylabel('Amplitude [arbitrary]')
+plt.savefig('raw_data.png')
+# clear plot so we can use it again
+plt.clf()
+
+# The y axis range is NOT CLEAR:
+# See issues documeting firmware bugs in DS1000Z series that makes it 
+# dubious whether this will work:
+# https://rigolwfm.readthedocs.io/en/latest/1-DS1000Z-Waveforms.html
+# https://github.com/michal-szkutnik/pyRigolWfm1000Z/issues/3#issue-196373027
+# https://github.com/michal-szkutnik/pyRigolWfm1000Z
+# Can we check scopes with updated firmware?
+
+# Offset is center of screen, which should be at half of 255 (127.)
+# So this *should* be:
+voltage_axis = (rawdata-127)*voltscale/255. - voltoffset
+# Does data need inverting? Some people seem to think so. 
+# https://gist.github.com/pklaus/7e4cbac1009b668eafab)
+
+# And draw this
+plt.plot(time_axis,voltage_axis)
+plt.xlabel('Time [s]')
+plt.ylabel("Amplitude [V]")
+plt.savefig('scaled_data.png')
+
+# What if we want to set the trigger? What unit is that in by default?
 
 #############################
 # More useful commands
