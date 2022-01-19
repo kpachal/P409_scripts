@@ -17,6 +17,9 @@ scope.write('*rst') # reset
 # Check for any errors after reset
 #print("Error check:",scope.query(":SYSTem:ERRor?"))
 
+# Set channel, trigger, etc to be back to what we currently have them set at in the lab.
+
+
 # Release scope for next call
 rm.close()
 scope.close()
