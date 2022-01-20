@@ -92,8 +92,8 @@ scope.write(":RUN")
 # it will be slower to run, but that's life.
 #mdepth = 12000
 mdepth = 6000
+print("Writing mdepth",mdepth)
 scope.write(":ACQ:MDEP {0}".format(mdepth))
-#scope.write(":ACQ:MDEP AUTO")
 used_mdepth = scope.query("ACQ:MDEP?")
 print("Mem depth:",used_mdepth)
 
@@ -103,7 +103,7 @@ print("Time axis mode:",scope.query(":TIMebase:MODE?"))
 
 # Let's set the x axis scale.
 # By trial and error, this looks pretty nice.
-scope.write(":TIM:SCAL 0.00002") 
+scope.write(":TIM:SCAL 0.000002") 
 
 # Set your trigger and let's turn it on.
 # Your options are AUTO, NORM, and SING
@@ -119,7 +119,7 @@ scope.write(":TRIG:EDG:SOUR {0}".format(channel)) # trigger on channel 1
 scope.write(":TRIG:EDG:SLOP POS") # trigge on the rising edge
 # Sets trigger level. For this you need to know your vertical scale!!
 # Read the manual and try a few options.
-scope.write(":TRIG:EDG:LEV 0.5.") # 1 volt
+scope.write(":TRIG:EDG:LEV -25.0") # 1 volt
 print("Trigger mode:",scope.query(":TRIG:MODE?"))
 print("Trigger status:",scope.query("trig:status?"))
 
@@ -149,7 +149,7 @@ print("Sample rate:", sample_rate)
 # Byte return format is a value between 0 and 255
 scope.write(":WAV:SOUR {0}".format(channel))
 scope.write(":WAV:FORM BYTE") # Other: ascii and raw
-scope.write(":WAV:MODE RAW") # NORM instead of RAW, which takes the whole buffer?
+scope.write(":WAV:MODE RAW")
 
 # Make sure things are what we want them to be.
 print("Check some values.")

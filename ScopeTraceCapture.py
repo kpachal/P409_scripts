@@ -27,7 +27,7 @@ print(args)
 # Since we can only collect a bit of data at a time on these scopes,
 # walk through the size of the trace samples and accumulate them here.
 def get_data(scope,mdepth) :
-    print("About to fetch data...")
+    print("About to fetch data in {0} points...".format(mdepth))
     fulldata = []
     points_list = list(range(489, mdepth, 489))
     points_list.append(mdepth)
@@ -53,7 +53,7 @@ def get_data(scope,mdepth) :
     # Using the scale info has proven confusing, so we'll actually just take the maximum
     # and minimum in the channel.
     #scope.write(":MEAS:SOUR {0}".format(channel))
-    vmin = float(scope.query(":MEAS:VMIN?"))
+    vmin = float(scope.query(":MEAS:VMIN?").strip())
     vmax = float(scope.query(":MEAS:VMAX?"))
     rawmin = np.amin(fulldata)
     rawmax = np.amax(fulldata)
